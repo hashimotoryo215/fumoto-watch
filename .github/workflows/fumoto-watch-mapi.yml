@@ -3,26 +3,42 @@ name: Fumotoppara Watch (Messaging API)
 on:
   schedule:
     - cron: "*/10 * * * *"   # 10分ごと（UTC）
-  workflow_dispatch:         # 手動テストも可能
+  workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    # Playwright + Python が入った公式コンテナを使用→初回も速い
     container:
       image: mcr.microsoft.com/playwright/python:v1.48.0-jammy
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps (requestsのみ)
-        run: pip install requests
+      - name: Install deps (playwright+requests)
+        run: |
+          python -V
+          pip install --no-cache-dir playwright requests
+          python -c "import playwright; print('playwright', playwright.__version__)"
+          # コンテナにはブラウザ同梱ですが、念のため入れ直したい場合は下を有効化
+          # python -m playwright install --with-deps chromium
 
       - name: Run watcher
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          TARGET_DATE_LABELS: "11/1,11/2"          # ← 監視する日付（複数可・半角カンマ区切り）
-          TARGET_ROWS: "キャンプ宿泊,キャンプ日帰り" # ← 監視する行
+          TARGET_DATE_LABELS: "11/1,11/2"
+          TARGET_ROWS: "キャンプ宿泊,キャンプ日帰り"
           TIMEOUT_MS: "60000"
-          ALWAYS_NOTIFY: "1"                        # ← 自動実行時も毎回通知（本運用で静かにしたい時は消す/0に）
+          ALWAYS_NOTIFY: "1"
         run: python watch_fumotoppara.py
+
+      # 任意：手動実行時に必ず通知を送って配信可否を切り分け
+      - name: Send test message (manual run only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"messages":[{"type":"text","text":"テスト通知：ワークフローから送信できました"}]}' \
+            https://api.line.me/v2/bot/message/broadcast
