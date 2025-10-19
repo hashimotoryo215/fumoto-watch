@@ -3,10 +3,8 @@
 ふもとっぱら 予約カレンダー監視（Messaging API 版）
 - 複数日チェック: 環境変数 TARGET_DATE_LABELS（例 "11/1,11/2"）
 - 行指定        : 環境変数 TARGET_ROWS（例 "キャンプ宿泊,キャンプ日帰り"）
-- 常時通知      : 環境変数 ALWAYS_NOTIFY を "1"/"true"/"yes" にすると空き無しでも通知
 - LINE送信      : 環境変数 LINE_CHANNEL_ACCESS_TOKEN（Messaging APIのチャネルアクセストークン）
-
-GitHub Actions での実行を想定。
+- 挙動          : 「〇 / ○ / △（△ 残1 など含む）」が1つでもあれば通知。空き無しは通知しない。
 """
 
 import os
@@ -28,7 +26,6 @@ else:
 TARGET_ROWS = [s.strip() for s in os.getenv("TARGET_ROWS", "キャンプ宿泊,キャンプ日帰り").split(",") if s.strip()]
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
 TIMEOUT_MS = int(os.getenv("TIMEOUT_MS", "60000"))
-ALWAYS_NOTIFY = os.getenv("ALWAYS_NOTIFY", "").lower() in ("1", "true", "yes")
 
 # ========= 通知 =========
 def line_broadcast(message: str):
@@ -120,7 +117,8 @@ def fetch_cell_symbol(page, row_label, date_label):
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(locale="ja-JP")
+        # JSTにしておくと時刻依存のサイトでも安心（念のため）
+        context = browser.new_context(locale="ja-JP", timezone_id="Asia/Tokyo")
         page = context.new_page()
         page.goto(PAGE_URL, wait_until="domcontentloaded", timeout=90000)
         page.wait_for_timeout(5000)  # JS描画の猶予
@@ -135,19 +133,23 @@ def main():
                     results[(row, d)] = f"ERROR: {e}"
         browser.close()
 
-    # メッセージ生成
+    # 空き判定：〇/○/△ を含めばOK（「△ 残1」等も通知対象）
+    def is_available_cell(text: str) -> bool:
+        t = normalize_text(str(text))
+        return any(mark in t for mark in ("〇", "○", "△"))
+
+    # メッセージ生成（空きがある時だけ送る）
     alerts, errors = [], []
     for (row, d), symbol in results.items():
-        if symbol in ("〇", "○", "△"):
+        if is_available_cell(symbol):
             alerts.append(f"{d} の {row}: {symbol}")
         elif isinstance(symbol, str) and symbol.startswith("ERROR"):
             errors.append(f"{d} の {row}: {symbol}")
 
-    if alerts or errors:
+    if alerts:
         lines = ["ふもとっぱら空き検知(Messaging API版)", "対象日: " + ", ".join(TARGET_DATE_LABELS)]
-        if alerts:
-            lines.append("【空きあり】")
-            lines += [f"・{a}" for a in alerts]
+        lines.append("【空きあり】")
+        lines += [f"・{a}" for a in alerts]
         if errors:
             lines.append("【取得エラー】(参考)")
             lines += [f"・{e}" for e in errors]
@@ -159,19 +161,10 @@ def main():
         except Exception as e:
             print(f"LINE通知失敗: {e}", file=sys.stderr)
     else:
-        # 完全に空き無し
+        # 空き無し：通知しない（ログのみ）
         print("空き無し: " + str(results))
-        if ALWAYS_NOTIFY:
-            msg = "\n".join([
-                "ふもとっぱら空き検知(Messaging API版)",
-                "対象日: " + ", ".join(TARGET_DATE_LABELS),
-                "【空き無し】",
-                f"確認: {PAGE_URL}",
-            ])
-            try:
-                line_broadcast(msg)
-            except Exception as e:
-                print(f"LINE通知失敗: {e}", file=sys.stderr)
+        if errors:
+            print("取得エラー(ログのみ): " + "; ".join(errors))
 
 if __name__ == "__main__":
     main()
