@@ -2,20 +2,27 @@ name: Fumotoppara Watch (Messaging API)
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/10 * * * *"   # 10分ごと（UTC）
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright/python:v1.55.0-jammy  # ← ここを1.55に
+      image: mcr.microsoft.com/playwright/python:v1.55.0-jammy  # ← 1.55.0 に統一
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps (requestsのみ)
-        run: pip install --no-cache-dir requests   # ← playwrightは入れない
+      - name: Install deps (playwright 1.55 固定 + requests)
+        run: |
+          pip install --no-cache-dir "playwright==1.55.0" requests
+          python - <<'PY'
+          import importlib.metadata as im
+          print("playwright", im.version("playwright"))
+          PY
+          # ブラウザはイメージに同梱。足りない場合だけ↓を有効化
+          # python -m playwright install --with-deps chromium
 
       - name: Run watcher
         env:
@@ -23,5 +30,17 @@ jobs:
           TARGET_DATE_LABELS: "11/1,11/2"
           TARGET_ROWS: "キャンプ宿泊,キャンプ日帰り"
           TIMEOUT_MS: "60000"
-          ALWAYS_NOTIFY: "1"
+          ALWAYS_NOTIFY: "1"   # 動作確認のため毎回通知
         run: python watch_fumotoppara.py
+
+      # 任意：手動実行のときは必ず1通送って配信可否を切り分け
+      - name: Send test message (manual run only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"messages":[{"type":"text","text":"テスト通知：ワークフローから送信できました"}]}' \
+            https://api.line.me/v2/bot/message/broadcast
