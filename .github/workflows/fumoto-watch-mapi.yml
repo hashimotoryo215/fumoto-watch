@@ -3,25 +3,26 @@ name: Fumotoppara Watch (Messaging API)
 on:
   schedule:
     - cron: "*/10 * * * *"   # 10分ごと（UTC）
-  workflow_dispatch:
+  workflow_dispatch:         # 手動テストも可能
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    # Playwright + Python が入った公式コンテナを使用→初回も速い
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.48.0-jammy
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install deps
-        run: |
-          pip install playwright requests
-          python -m playwright install --with-deps chromium
+
+      - name: Install deps (requestsのみ)
+        run: pip install requests
+
       - name: Run watcher
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          TARGET_DATE_LABELS: "11/1,11/2"   # ← ここで複数日を指定
-          TARGET_ROWS: "キャンプ宿泊,キャンプ日帰り"
+          TARGET_DATE_LABELS: "11/1,11/2"          # ← 監視する日付（複数可・半角カンマ区切り）
+          TARGET_ROWS: "キャンプ宿泊,キャンプ日帰り" # ← 監視する行
           TIMEOUT_MS: "60000"
-        run: |
-          python watch_fumotoppara.py   # ← あなたのファイル名に合わせる
+          ALWAYS_NOTIFY: "1"                        # ← 自動実行時も毎回通知（本運用で静かにしたい時は消す/0に）
+        run: python watch_fumotoppara.py
