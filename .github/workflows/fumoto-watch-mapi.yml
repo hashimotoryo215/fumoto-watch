@@ -32,7 +32,7 @@ jobs:
       - name: Run watcher
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          TARGET_DATE_LABELS: "11/1,11/2"          # ← 監視する日付（複数可・半角カンマ区切り）
+          TARGET_DATE_LABELS: "10/25"          # ← 監視する日付（複数可・半角カンマ区切り）
           TARGET_ROWS: "キャンプ宿泊,キャンプ日帰り" # ← 監視する行
           TIMEOUT_MS: "60000"
         run: python watch_fumotoppara.py
