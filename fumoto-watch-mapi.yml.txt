@@ -1,0 +1,38 @@
+name: Fumotoppara Watch (Messaging API)
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # 10分ごと（UTC）
+  workflow_dispatch:         # 手動テストも可能
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.55.0-jammy  # Playwright入り
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (playwright 1.55 + requests)
+        run: |
+          pip install --no-cache-dir "playwright==1.55.0" requests
+
+      # 任意：環境が整っているかのスモークテスト（残してOK/消してもOK）
+      - name: Smoke test (launch chromium)
+        run: |
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              b = p.chromium.launch(headless=True)
+              print("Chromium OK:", b.version)
+              b.close()
+          PY
+
+      - name: Run watcher
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          TARGET_DATE_LABELS: "5/2,5/3"          # ← 監視する日付（複数可・半角カンマ区切り）
+          TARGET_ROWS: "キャンプ宿泊" # ← 監視する行
+          TIMEOUT_MS: "60000"
+        run: python watch_fumotoppara.py
